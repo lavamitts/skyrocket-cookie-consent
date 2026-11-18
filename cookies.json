@@ -1,0 +1,50 @@
+{
+    "languages": {
+        "en": {
+            "popup_title": "Cookie preferences",
+            "popup_description": "We use cookies to optimise your experience. Choose which categories you allow.",
+            "cookie_detail": "Cookie detail",
+            "cookie": "Cookie",
+            "duration": "Duration",
+            "about": "About",
+            "btn_save": "Save choices",
+            "btn_accept": "Accept all",
+            "btn_accept_no_choice": "Accept",
+            "categories": {
+                "strictly_necessary": {
+                    "title": "Strictly necessary",
+                    "description": "Essential for the website to function properly.",
+                    "cookies": [
+                        {
+                            "name": "custom_cookie_consent",
+                            "expiry": "1 year",
+                            "description": "Stores your cookie consent preferences."
+                        }
+                    ]
+                },
+                "analytics": {
+                    "title": "Analytics",
+                    "description": "Helps us understand how visitors interact with the site.",
+                    "cookies": [
+                        {
+                            "name": "_ga",
+                            "expiry": "1 year",
+                            "description": "This cookie assigns a unique, random ID to your browser so Google Analytics can recognise you as a returning visitor rather than a new user on future visits."
+                        },
+                        {
+                            "name": "_ga",
+                            "expiry": "1 year",
+                            "description": "This cookie tracks your current session by storing the exact start time, how long you stay, and how many pages you view during this specific visit."
+                        }
+
+                    ]
+                },
+                "marketing": {
+                    "title": "Marketing",
+                    "description": "Used to deliver relevant advertisements.",
+                    "cookies": []
+                }
+            }
+        }
+    }
+}
