@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Skyrocket Cookie Consent
  * Description: Lightweight, database-managed cookie consent popup for WordPress.
- * Version:     2.0.0
+ * Version:     2.0.2
  * Author:      Skyrocket Digital Development
  * License:     GPL-2.0
  * Text Domain: skyrocket-cookie-consent
@@ -12,7 +12,7 @@
 
 defined('ABSPATH') || exit;
 
-define('SKYROCKET_COOKIE_CONSENT_VERSION', '2.0.0');
+define('SKYROCKET_COOKIE_CONSENT_VERSION', '2.0.2');
 define('SKYROCKET_COOKIE_CONSENT_FILE', __FILE__);
 define('SKYROCKET_COOKIE_CONSENT_DIR', plugin_dir_path(__FILE__));
 define('SKYROCKET_COOKIE_CONSENT_URL', plugin_dir_url(__FILE__));
@@ -37,6 +37,8 @@ if (file_exists($updater_file)) {
 require_once SKYROCKET_COOKIE_CONSENT_DIR . 'includes/class-cookie-consent-config.php';
 require_once SKYROCKET_COOKIE_CONSENT_DIR . 'includes/class-cookie-consent-rest.php';
 require_once SKYROCKET_COOKIE_CONSENT_DIR . 'includes/class-cookie-consent-admin.php';
+require_once SKYROCKET_COOKIE_CONSENT_DIR . 'includes/class-cookie-consent-woocommerce.php';
+require_once SKYROCKET_COOKIE_CONSENT_DIR . 'includes/class-cookie-consent-enforcement.php';
 
 /**
  * Bootstrap the plugin after all active plugins have loaded.
@@ -48,6 +50,11 @@ function skyrocket_cookie_consent_init(): void
     $config = new Skyrocket_Cookie_Consent_Config();
 
     new Skyrocket_Cookie_Consent_REST($config);
+
+    $enforcement = new Skyrocket_Cookie_Consent_Enforcement($config);
+    $GLOBALS['skyrocket_cookie_consent_enforcement'] = $enforcement;
+
+    new Skyrocket_Cookie_Consent_WooCommerce($config);
 
     if (is_admin()) {
         new Skyrocket_Cookie_Consent_Admin($config);
@@ -81,6 +88,7 @@ function skyrocket_cookie_consent_init(): void
                 'custom-cookie-consent',
                 'window.cookieConsentSettings = ' . wp_json_encode([
                     'configUrl' => esc_url_raw(rest_url('skyrocket-cookie-consent/v1/config')),
+                    'cleanupUrl' => esc_url_raw(rest_url('skyrocket-cookie-consent/v1/cleanup')),
                     'languageStrategy' => 'browser-wordpress',
                 ]) . ';',
                 'before'
