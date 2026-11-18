@@ -1,0 +1,1 @@
+Copy your existing cookie-consent.js into this directory. Update its configuration fetch and language selection as described in README.md.

@@ -1,271 +1,91 @@
 <?php
 /**
  * Plugin Name: Skyrocket Cookie Consent
- * Description: Lightweight cookie consent popup driven by a JSON config.
- * Version:     1.2.0
+ * Description: Lightweight, database-managed cookie consent popup for WordPress.
+ * Version:     2.0.0
  * Author:      Skyrocket Digital Development
- * License:     GPL2
- *
- * Plugin URI:  https://github.com/lavamitts/skyrocket-cookie-consent
+ * License:     GPL-2.0
+ * Text Domain: skyrocket-cookie-consent
  *
  * @package SkyrocketCookieConsent
  */
 
 defined('ABSPATH') || exit;
 
+define('SKYROCKET_COOKIE_CONSENT_VERSION', '2.0.0');
+define('SKYROCKET_COOKIE_CONSENT_FILE', __FILE__);
+define('SKYROCKET_COOKIE_CONSENT_DIR', plugin_dir_path(__FILE__));
+define('SKYROCKET_COOKIE_CONSENT_URL', plugin_dir_url(__FILE__));
 
 /**
- * GitHub Plugin Updater Configuration
+ * GitHub Plugin Updater configuration.
  *
- * Defines the GitHub repository used by the shared Skyrocket Plugin Updater.
- *
- * @var array{
- *     username: string,
- *     repository: string,
- *     plugin_file: string
- * }
+ * @var array
  */
 $github_updater_config = [
-    'username' => 'lavamitts',
-    'repository' => 'skyrocket-cookie-consent',
+    'username'    => 'lavamitts',
+    'repository'  => 'skyrocket-cookie-consent',
     'plugin_file' => __FILE__,
 ];
 
+$updater_file = __DIR__ . '/vendor/lavamitts/skyrocket-plugin-updater/src/plugin-updater.php';
+
+if (file_exists($updater_file)) {
+    require_once $updater_file;
+}
+
+require_once SKYROCKET_COOKIE_CONSENT_DIR . 'includes/class-cookie-consent-config.php';
+require_once SKYROCKET_COOKIE_CONSENT_DIR . 'includes/class-cookie-consent-rest.php';
+require_once SKYROCKET_COOKIE_CONSENT_DIR . 'includes/class-cookie-consent-admin.php';
 
 /**
- * Load the shared Skyrocket Plugin Updater.
+ * Bootstrap the plugin after all active plugins have loaded.
  *
- * The updater handles checking the configured GitHub repository for
- * available plugin updates and integrating them with WordPress.
+ * @return void
  */
-require_once __DIR__ . '/vendor/lavamitts/skyrocket-plugin-updater/src/plugin-updater.php';
-
-
-/**
- * Main Skyrocket Cookie Consent plugin class.
- *
- * Handles frontend asset registration and loading, including:
- *
- * - Conditionally loading the plugin stylesheet.
- * - Registering and enqueueing the cookie consent JavaScript.
- * - Applying file modification timestamps for JavaScript cache busting.
- * - Adding the plugin configuration URL to the JavaScript environment.
- *
- * The actual consent interface and behaviour are handled by the
- * external JavaScript and CSS assets.
- *
- * @package SkyrocketCookieConsent
- * @since   1.0.0
- */
-final class Custom_Cookie_Consent
+function skyrocket_cookie_consent_init(): void
 {
-    /**
-     * Current plugin version.
-     *
-     * Used as the default asset version and as the stylesheet cache
-     * identifier.
-     *
-     * Keep this value synchronised with the plugin header version.
-     *
-     * @var string
-     */
-    const VERSION = '1.2.0';
+    $config = new Skyrocket_Cookie_Consent_Config();
 
-    /**
-     * Absolute path to the main plugin file.
-     *
-     * @var string
-     */
-    private string $plugin_file;
+    new Skyrocket_Cookie_Consent_REST($config);
 
-    /**
-     * Absolute filesystem path to the plugin directory.
-     *
-     * @var string
-     */
-    private string $plugin_dir;
-
-    /**
-     * Public URL of the plugin directory.
-     *
-     * @var string
-     */
-    private string $plugin_url;
-
-
-    /**
-     * Initialise the plugin.
-     *
-     * Stores the plugin filesystem path and URL, then registers
-     * the frontend asset-enqueueing hook.
-     *
-     * @param string $file Absolute path to the main plugin file.
-     */
-    public function __construct(string $file)
-    {
-        $this->plugin_file = $file;
-        $this->plugin_dir = plugin_dir_path($file);
-        $this->plugin_url = plugin_dir_url($file);
-
-        add_action('wp_enqueue_scripts', [$this, 'enqueue_assets']);
+    if (is_admin()) {
+        new Skyrocket_Cookie_Consent_Admin($config);
     }
 
+    add_action('wp_enqueue_scripts', static function () use ($config): void {
+        $js_path  = SKYROCKET_COOKIE_CONSENT_DIR . 'assets/js/cookie-consent.js';
+        $css_path = SKYROCKET_COOKIE_CONSENT_DIR . 'assets/css/cookie-consent.css';
 
-    /**
-     * Register and enqueue frontend styles and scripts.
-     *
-     * The stylesheet can be disabled using the
-     * `custom_cookie_consent_use_css` filter.
-     *
-     * JavaScript is always registered and enqueued, provided WordPress
-     * can process the registered script. Its version is based on the
-     * file modification timestamp when available, allowing browsers
-     * to automatically request updated files after changes.
-     *
-     * The cookie configuration URL is made available to JavaScript
-     * through the global `window.cookieConsentSettings` object.
-     *
-     * Assets:
-     *
-     * - assets/css/cookie-consent.css
-     * - assets/js/cookie-consent.js
-     * - cookies.json
-     *
-     * @return void
-     */
-    public function enqueue_assets(): void
-    {
-        // Resolve asset filesystem paths and public URLs.
-        $js_path = $this->plugin_dir . 'assets/js/cookie-consent.js';
-        $css_path = $this->plugin_dir . 'assets/css/cookie-consent.css';
-
-        $js_url = $this->plugin_url . 'assets/js/cookie-consent.js';
-        $css_url = $this->plugin_url . 'assets/css/cookie-consent.css';
-
-
-        /**
-         * Enqueue stylesheet.
-         *
-         * Allows themes or other plugins to disable the default
-         * stylesheet while retaining the cookie consent functionality.
-         *
-         * Filter:
-         * custom_cookie_consent_use_css
-         *
-         * Default: true
-         */
-        $use_css = apply_filters('custom_cookie_consent_use_css', true);
-
-        if ($use_css && file_exists($css_path)) {
+        if (apply_filters('custom_cookie_consent_use_css', true) && file_exists($css_path)) {
             wp_enqueue_style(
                 'custom-cookie-consent',
-                $css_url,
+                SKYROCKET_COOKIE_CONSENT_URL . 'assets/css/cookie-consent.css',
                 [],
-                self::VERSION
+                filemtime($css_path) ?: SKYROCKET_COOKIE_CONSENT_VERSION
             );
         }
 
-
-        /**
-         * Determine JavaScript asset version.
-         *
-         * Uses the plugin version as a fallback. If the JavaScript
-         * file exists and its modification timestamp can be retrieved,
-         * the timestamp is used instead to provide automatic cache busting.
-         */
-        $js_version = self::VERSION;
-
         if (file_exists($js_path)) {
-            $mtime = filemtime($js_path);
+            wp_enqueue_script(
+                'custom-cookie-consent',
+                SKYROCKET_COOKIE_CONSENT_URL . 'assets/js/cookie-consent.js',
+                [],
+                filemtime($js_path) ?: SKYROCKET_COOKIE_CONSENT_VERSION,
+                true
+            );
 
-            if ($mtime !== false) {
-                $js_version = (string) $mtime;
-            }
+            wp_script_add_data('custom-cookie-consent', 'strategy', 'defer');
+
+            wp_add_inline_script(
+                'custom-cookie-consent',
+                'window.cookieConsentSettings = ' . wp_json_encode([
+                    'configUrl' => esc_url_raw(rest_url('skyrocket-cookie-consent/v1/config')),
+                    'languageStrategy' => 'browser-wordpress',
+                ]) . ';',
+                'before'
+            );
         }
-
-
-        /**
-         * Register the cookie consent JavaScript.
-         *
-         * No dependencies are declared.
-         *
-         * The script is configured to load in the footer and uses
-         * the defer loading strategy to avoid blocking page rendering.
-         */
-        wp_register_script(
-            'custom-cookie-consent',
-            $js_url,
-            [],
-            $js_version,
-            true
-        );
-
-
-        /**
-         * Apply deferred script loading.
-         *
-         * Uses the WordPress script loading strategy API.
-         * The defer strategy allows HTML parsing to continue while
-         * the browser downloads the script.
-         */
-        wp_script_add_data(
-            'custom-cookie-consent',
-            'strategy',
-            'defer'
-        );
-
-
-        // Enqueue the registered JavaScript.
-        wp_enqueue_script('custom-cookie-consent');
-
-
-        /**
-         * Pass configuration to the frontend JavaScript.
-         *
-         * Exposes the public URL of cookies.json through
-         * window.cookieConsentSettings.
-         *
-         * The configuration is added before the main JavaScript
-         * executes, ensuring it is available when the script loads.
-         *
-         * wp_json_encode() safely serialises the configuration
-         * for use in JavaScript.
-         */
-        $settings = [
-            'configUrl' => esc_url_raw($this->plugin_url . 'cookies.json'),
-        ];
-
-        wp_add_inline_script(
-            'custom-cookie-consent',
-            'window.cookieConsentSettings = ' . wp_json_encode($settings) . ';',
-            'before'
-        );
-    }
+    });
 }
-
-
-/**
- * Capture the main plugin file.
- *
- * Store the absolute path immediately so it remains available to the
- * bootstrap callback, even if the bootstrap code is subsequently moved
- * or reorganised.
- *
- * @var string
- */
-$custom_cookie_consent_root_file = __FILE__;
-
-
-/**
- * Bootstrap the plugin.
- *
- * Initialise the main plugin class once WordPress has loaded its
- * active plugins.
- *
- * Passing the captured plugin file into the class ensures that
- * filesystem paths and URLs are resolved relative to the correct
- * plugin installation directory.
- */
-add_action('plugins_loaded', function () use ($custom_cookie_consent_root_file) {
-    new Custom_Cookie_Consent($custom_cookie_consent_root_file);
-});
+add_action('plugins_loaded', 'skyrocket_cookie_consent_init');

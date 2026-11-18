@@ -1,306 +1,204 @@
 # Skyrocket Cookie Consent
 
-A lightweight, JavaScript-driven cookie consent popup for WordPress, controlled through an external JSON configuration file.
+A lightweight, database-managed cookie consent plugin for WordPress.
 
-**Version:** 1.2.0  
+**Version:** 2.0.0  
 **Author:** Skyrocket Digital Development  
-**License:** GPL-2.0  
-**Repository:** [skyrocket-cookie-consent](https://github.com/lavamitts/skyrocket-cookie-consent)
-
----
+**License:** GPL-2.0
 
 ## Overview
 
-Skyrocket Cookie Consent provides a lightweight frontend cookie consent implementation for WordPress.
+Version 2 replaces the static `cookie-consent.json` configuration file with a WordPress administration interface and database-backed settings.
 
-The plugin separates its functionality into three main components:
+The plugin manages:
 
-- **PHP:** Handles WordPress integration, asset loading and frontend configuration.
-- **JavaScript:** Controls the cookie consent interface and its behaviour.
-- **JSON:** Provides the external configuration used by the JavaScript.
+- Multiple languages and translated popup labels.
+- Shared cookie categories.
+- Shared individual cookie definitions.
+- Translated category titles and descriptions.
+- Translated cookie descriptions.
+- Required categories.
+- A configurable default language.
 
-This approach keeps the WordPress integration simple and allows the consent configuration to be maintained independently of the PHP implementation.
-
-The plugin does not rely on jQuery or any additional JavaScript libraries.
-
-## Features
-
-- Lightweight WordPress integration.
-- JSON-driven cookie consent configuration.
-- External JavaScript and CSS assets.
-- No jQuery dependency.
-- Deferred JavaScript loading.
-- Automatic JavaScript cache busting using file modification timestamps.
-- Optional stylesheet loading.
-- Filterable stylesheet functionality.
-- Frontend configuration exposed through a JavaScript global.
-- GitHub-based plugin updates through the shared Skyrocket Plugin Updater.
+The configuration is stored in one WordPress option. No custom database tables are created.
 
 ## Requirements
 
-- WordPress.
+- WordPress 6.3 or later recommended.
 - PHP 7.4 or later.
-- JavaScript enabled in the visitor's browser.
-- The included plugin asset files.
-- The shared Skyrocket Plugin Updater dependency.
-
-WordPress 6.3 or later is recommended for modern script loading strategy support.
+- The existing frontend `cookie-consent.js` and `cookie-consent.css` assets.
 
 ## Installation
 
-1. Download or clone the repository.
-2. Ensure the complete plugin directory, including its `vendor` and `assets` directories, is present.
-3. Upload the `skyrocket-cookie-consent` directory to `/wp-content/plugins/`.
-4. Activate **Skyrocket Cookie Consent** through the WordPress Plugins screen.
+1. Upload the plugin directory to `wp-content/plugins/`.
+2. Copy your existing `assets/js/cookie-consent.js` and `assets/css/cookie-consent.css` into the corresponding directories in this package.
+3. Activate **Skyrocket Cookie Consent**.
+4. Open **Cookie Consent** in the WordPress administration menu.
 
-The plugin automatically registers and loads its frontend assets.
+A fresh English configuration is created on first use. The old JSON file is not read or imported.
 
-## File Structure
-
-The expected plugin structure is:
+## File structure
 
 ```text
 skyrocket-cookie-consent/
-│
 ├── assets/
 │   ├── css/
 │   │   └── cookie-consent.css
-│   │
 │   └── js/
 │       └── cookie-consent.js
-│
+├── includes/
+│   ├── class-cookie-consent-admin.php
+│   ├── class-cookie-consent-config.php
+│   └── class-cookie-consent-rest.php
 ├── vendor/
 │   └── lavamitts/
 │       └── skyrocket-plugin-updater/
 │           └── src/
 │               └── plugin-updater.php
-│
-├── cookies.json
 ├── skyrocket-cookie-consent.php
 └── README.md
 ```
 
-The main plugin file is responsible for WordPress integration.
+The updater dependency is optional at runtime in this version: the plugin checks that its loader exists before including it. Include the shared updater package in release ZIPs when GitHub updates are required.
 
-The JavaScript and CSS files provide the frontend implementation, while `cookies.json` supplies the configuration.
+## Data model
 
-## Configuration
+All configuration is stored in the `skyrocket_cookie_consent_settings` WordPress option with autoload disabled.
 
-### cookies.json
+### Languages
 
-The plugin expects a JSON configuration file named:
+Each language stores its display label and translated popup/interface strings.
 
-`cookies.json`
+### Categories
 
-This file must be located in the root of the plugin directory.
+Categories are shared across languages. Each category stores:
 
-The PHP component provides its public URL to the JavaScript through the following global object:
+- A stable category identifier.
+- A required flag.
+- A title and description translation for each language.
+- Its list of cookies.
+
+### Cookies
+
+Cookies are shared across languages. Each cookie stores:
+
+- A unique internal identifier.
+- Cookie name.
+- Expiry/duration.
+- A description translation for each language.
+
+The internal cookie identifier allows two entries with the same cookie name to remain distinct.
+
+## Language selection
+
+The REST response includes a `language_fallbacks` array in this order:
+
+1. A supported browser language from the request's `Accept-Language` header.
+2. The WordPress site locale.
+3. The configured default language.
+
+Locale matching supports regional fallback. For example, `fr-CA` can match an available `fr` translation.
+
+The frontend JavaScript must use this array when selecting a language. The plugin cannot guarantee this behaviour if an older frontend script independently selects its language and ignores the REST metadata.
+
+## Frontend configuration endpoint
+
+The public configuration endpoint is:
+
+```text
+/wp-json/skyrocket-cookie-consent/v1/config
+```
+
+It returns the familiar `languages` structure expected by the previous JSON-driven implementation. Shared category and cookie records are expanded into each language in the response, with translated text applied.
+
+Additional metadata is included:
+
+- `default_language`
+- `language_strategy`
+- `language_fallbacks`
+- `wordpress_language`
+
+Consumers that only read `languages` can ignore the additional fields.
+
+## JavaScript integration
+
+The frontend script receives:
 
 ```javascript
 window.cookieConsentSettings = {
-    configUrl: "https://example.com/wp-content/plugins/skyrocket-cookie-consent/cookies.json"
+    configUrl: "https://example.com/wp-json/skyrocket-cookie-consent/v1/config",
+    languageStrategy: "browser-wordpress"
 };
 ```
 
-The actual URL is generated dynamically using WordPress plugin URL functions.
+The frontend must fetch `configUrl`, then select the first available language in `language_fallbacks`.
 
-The JavaScript can access the configuration URL using:
+Example selection logic:
 
 ```javascript
-window.cookieConsentSettings.configUrl
+const config = await fetch(window.cookieConsentSettings.configUrl)
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Unable to load cookie consent configuration.');
+        }
+
+        return response.json();
+    });
+
+const language = config.language_fallbacks.find(
+    code => Object.prototype.hasOwnProperty.call(config.languages, code)
+) || config.default_language;
+
+const languageConfig = config.languages[language];
 ```
 
-The JavaScript implementation is responsible for retrieving and processing the JSON configuration.
+Pass `languageConfig` to the existing popup rendering code.
 
-The precise configuration structure is determined by the accompanying JavaScript implementation.
+The current frontend JavaScript was not included with this source package. Its configuration-fetching and language-selection code therefore needs to be updated to use this endpoint and fallback array. The popup rendering and consent behaviour can otherwise remain unchanged.
 
-## Asset Loading
+## Administration
 
-The plugin registers its frontend assets using the WordPress `wp_enqueue_scripts` action.
+The Cookie Consent administration screen provides:
 
-### CSS
+- Add and delete languages.
+- Edit translated popup text.
+- Set the default language.
+- Add and delete shared categories.
+- Mark categories as required.
+- Translate category titles and descriptions.
+- Add and delete cookies.
+- Edit cookie names and expiry values.
+- Translate cookie descriptions.
 
-The stylesheet is loaded from:
+The default language cannot be deleted.
 
-`assets/css/cookie-consent.css`
+The `strictly_necessary` category is protected from deletion by the initial implementation.
 
-The stylesheet is only enqueued if:
+## Developer filter
 
-- Stylesheet loading has not been disabled through the plugin filter.
-- The CSS file exists.
-
-The registered stylesheet handle is:
-
-`custom-cookie-consent`
-
-The plugin version is used as its cache-busting version identifier.
-
-### JavaScript
-
-The JavaScript file is loaded from:
-
-`assets/js/cookie-consent.js`
-
-The registered script handle is:
-
-`custom-cookie-consent`
-
-The script:
-
-- Has no registered dependencies.
-- Loads in the footer.
-- Uses the `defer` loading strategy.
-- Uses the file modification timestamp as its version identifier when available.
-
-Using the modification timestamp means that changes to the JavaScript file automatically invalidate the browser's cached copy without requiring a plugin version change.
-
-If the file does not exist or its modification timestamp cannot be retrieved, the plugin version is used as a fallback.
-
-### Frontend Configuration
-
-The configuration URL is added to the registered JavaScript using `wp_add_inline_script()` with the `before` position.
-
-This ensures the configuration object is available before the main cookie consent JavaScript executes.
-
-## Developer Hooks
-
-### Stylesheet Loading Filter
-
-The plugin provides a filter allowing developers to disable its default stylesheet.
-
-**Filter:**
-
-`custom_cookie_consent_use_css`
-
-**Default value:** `true`
-
-**Example:**
+The existing stylesheet filter is retained:
 
 ```php
-/**
- * Disable the default Skyrocket Cookie Consent stylesheet.
- *
- * Useful when implementing custom styling through a theme
- * or another stylesheet.
- */
 add_filter('custom_cookie_consent_use_css', '__return_false');
 ```
 
-This disables the plugin's CSS without preventing the JavaScript from loading.
+This disables the plugin stylesheet without disabling its frontend JavaScript.
 
-Developers can then provide their own styling while retaining the plugin's JavaScript functionality.
+## Security
 
-## GitHub Updates
+Administration changes require the `manage_options` capability and a WordPress nonce. Submitted values are sanitised before saving. The configuration REST endpoint is public by design because the frontend consent interface needs to read it.
 
-The plugin integrates with the shared Skyrocket Plugin Updater.
+Do not store secrets or private administrative data in the public configuration.
 
-The repository configuration is defined in the main plugin file:
+## Version history
 
-```php
-$github_updater_config = [
-    'username'   => 'lavamitts',
-    'repository' => 'skyrocket-cookie-consent',
-    'plugin_file' => __FILE__,
-];
-```
+### 2.0.0
 
-The shared updater is loaded from:
-
-```text
-vendor/lavamitts/skyrocket-plugin-updater/src/plugin-updater.php
-```
-
-The configuration identifies:
-
-| Setting | Description |
-|---|---|
-| `username` | GitHub repository owner |
-| `repository` | GitHub repository name |
-| `plugin_file` | Absolute path to the main plugin file |
-
-Update functionality is provided by the shared updater rather than being implemented directly within this plugin.
-
-## Development
-
-### Version Management
-
-The plugin version is declared in two places:
-
-1. The `Version` field in the main plugin header.
-2. The `VERSION` constant within `Custom_Cookie_Consent`.
-
-These values should always be kept synchronised.
-
-The plugin version is used for stylesheet cache busting and as the fallback JavaScript version.
-
-The JavaScript file modification timestamp takes precedence when available.
-
-### Modifying the JavaScript
-
-The main JavaScript file is:
-
-`assets/js/cookie-consent.js`
-
-Changes are automatically reflected in the browser cache version through the file modification timestamp.
-
-### Modifying the Stylesheet
-
-The main stylesheet is:
-
-`assets/css/cookie-consent.css`
-
-Changes should be accompanied by a plugin version increment if browser cache invalidation is required.
-
-Alternatively, developers can implement their own cache-busting mechanism when overriding the default stylesheet.
-
-### Modifying the Configuration
-
-The JSON configuration is maintained separately in:
-
-`cookies.json`
-
-Changes to this file do not require changes to the PHP plugin version.
-
-## Architecture
-
-The plugin follows a deliberately simple loading sequence:
-
-1. WordPress loads the main plugin file.
-2. The GitHub updater configuration is established.
-3. The shared plugin updater is loaded.
-4. The `plugins_loaded` action initialises `Custom_Cookie_Consent`.
-5. The class registers its frontend asset-loading callback.
-6. WordPress fires `wp_enqueue_scripts`.
-7. The plugin conditionally loads its stylesheet.
-8. The plugin registers and enqueues its deferred JavaScript.
-9. The JSON configuration URL is made available to the JavaScript.
-10. The JavaScript handles the cookie consent functionality.
-
-This separation keeps the PHP component lightweight and avoids coupling the consent interface to WordPress beyond the initial asset and configuration integration.
-
-## License
-
-This plugin is distributed under the GNU General Public License version 2 (GPL-2.0).
-
-See the repository for licensing information and included third-party components.
-
----
-
-**
-
-
-## Building a release
-
-The plugin uses [Skyrocket Plugin Updater](https://github.com/lavamitts/skyrocket-plugin-updater) as a Composer dependency.
-
-The updater dependency also provides the distribution build script, which prepares the plugin files for release.
-
-After installing the Composer dependencies, run the following command from the plugin root directory:
-
-```bash
-./vendor/lavamitts/skyrocket-plugin-updater/tools/build-distribution.sh
-```
-
-This builds the release candidate, preparing a distributable version of the plugin without requiring the development dependency structure to be included in the release.
-
-The resulting distribution package is intended for installation through the standard WordPress plugin installation process.
+- Replace the static JSON configuration file with WordPress database storage.
+- Add language management.
+- Add shared category management.
+- Add shared cookie management.
+- Add translated category and cookie descriptions.
+- Add public REST configuration endpoint.
+- Add browser → WordPress → default language fallback metadata.
+- Retain the existing frontend stylesheet filter and script handle.
